@@ -1,0 +1,519 @@
+import os
+import pickle
+import numpy as np
+import pandas as pd
+from datetime import datetime
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_score, recall_score
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+import xgboost as xgb
+import lightgbm as lgb
+import joblib
+
+
+def train_logistic_regression(X_train, y_train, **params):
+    """
+    Train logistic regression model.
+    
+    Parameters:
+    -----------
+    X_train : pandas.DataFrame or numpy.ndarray
+        Training features
+    y_train : pandas.Series or numpy.ndarray
+        Target variable
+    **params : dict
+        Parameters to pass to LogisticRegression
+        
+    Returns:
+    --------
+    sklearn.linear_model.LogisticRegression
+        Trained logistic regression model
+    """
+    # Set default parameters if not provided
+    default_params = {
+        'C': 1.0,
+        'class_weight': 'balanced',
+        'random_state': 42,
+        'max_iter': 1000,
+        'n_jobs': -1
+    }
+    
+    # Update default parameters with provided parameters
+    model_params = {**default_params, **params}
+    
+    # Initialize the model
+    model = LogisticRegression(**model_params)
+    
+    # Train the model
+    model.fit(X_train, y_train)
+    
+    return model
+
+
+def train_decision_tree(X_train, y_train, **params):
+    """
+    Train decision tree model.
+    
+    Parameters:
+    -----------
+    X_train : pandas.DataFrame or numpy.ndarray
+        Training features
+    y_train : pandas.Series or numpy.ndarray
+        Target variable
+    **params : dict
+        Parameters to pass to DecisionTreeClassifier
+        
+    Returns:
+    --------
+    sklearn.tree.DecisionTreeClassifier
+        Trained decision tree model
+    """
+    # Set default parameters if not provided
+    default_params = {
+        'max_depth': 10,
+        'min_samples_split': 10,
+        'min_samples_leaf': 5,
+        'class_weight': 'balanced',
+        'random_state': 42
+    }
+    
+    # Update default parameters with provided parameters
+    model_params = {**default_params, **params}
+    
+    # Initialize the model
+    model = DecisionTreeClassifier(**model_params)
+    
+    # Train the model
+    model.fit(X_train, y_train)
+    
+    return model
+
+
+def train_random_forest(X_train, y_train, **params):
+    """
+    Train random forest model.
+    
+    Parameters:
+    -----------
+    X_train : pandas.DataFrame or numpy.ndarray
+        Training features
+    y_train : pandas.Series or numpy.ndarray
+        Target variable
+    **params : dict
+        Parameters to pass to RandomForestClassifier
+        
+    Returns:
+    --------
+    sklearn.ensemble.RandomForestClassifier
+        Trained random forest model
+    """
+    # Set default parameters if not provided
+    default_params = {
+        'n_estimators': 100,
+        'max_depth': 15,
+        'min_samples_split': 10,
+        'min_samples_leaf': 5,
+        'max_features': 'sqrt',
+        'class_weight': 'balanced',
+        'random_state': 42,
+        'n_jobs': -1
+    }
+    
+    # Update default parameters with provided parameters
+    model_params = {**default_params, **params}
+    
+    # Initialize the model
+    model = RandomForestClassifier(**model_params)
+    
+    # Train the model
+    model.fit(X_train, y_train)
+    
+    return model
+
+
+def train_gradient_boosting(X_train, y_train, model_type='xgboost', **params):
+    """
+    Train gradient boosting model.
+    
+    Parameters:
+    -----------
+    X_train : pandas.DataFrame or numpy.ndarray
+        Training features
+    y_train : pandas.Series or numpy.ndarray
+        Target variable
+    model_type : str, default='xgboost'
+        Type of gradient boosting model: 'xgboost', 'lightgbm', or 'sklearn'
+    **params : dict
+        Parameters to pass to the gradient boosting model
+        
+    Returns:
+    --------
+    object
+        Trained gradient boosting model (xgboost, lightgbm, or sklearn)
+    """
+    if model_type == 'xgboost':
+        # Set default parameters for XGBoost
+        default_params = {
+            'n_estimators': 100,
+            'max_depth': 6,
+            'learning_rate': 0.1,
+            'subsample': 0.8,
+            'colsample_bytree': 0.8,
+            'objective': 'binary:logistic',
+            'scale_pos_weight': sum(y_train == 0) / sum(y_train == 1),  # handle class imbalance
+            'random_state': 42,
+            'n_jobs': -1
+        }
+        
+        # Update default parameters with provided parameters
+        model_params = {**default_params, **params}
+        
+        # Initialize and train the model
+        model = xgb.XGBClassifier(**model_params)
+        model.fit(X_train, y_train)
+        
+    elif model_type == 'lightgbm':
+        # Set default parameters for LightGBM
+        default_params = {
+            'n_estimators': 100,
+            'max_depth': -1,  # -1 means no limit
+            'num_leaves': 31,
+            'learning_rate': 0.1,
+            'subsample': 0.8,
+            'colsample_bytree': 0.8,
+            'objective': 'binary',
+            'class_weight': 'balanced',
+            'random_state': 42,
+            'n_jobs': -1
+        }
+        
+        # Update default parameters with provided parameters
+        model_params = {**default_params, **params}
+        
+        # Initialize and train the model
+        model = lgb.LGBMClassifier(**model_params)
+        model.fit(X_train, y_train)
+        
+    elif model_type == 'sklearn':
+        # Set default parameters for scikit-learn GradientBoostingClassifier
+        default_params = {
+            'n_estimators': 100,
+            'max_depth': 5,
+            'learning_rate': 0.1,
+            'subsample': 0.8,
+            'random_state': 42
+        }
+        
+        # Update default parameters with provided parameters
+        model_params = {**default_params, **params}
+        
+        # Initialize and train the model
+        model = GradientBoostingClassifier(**model_params)
+        model.fit(X_train, y_train)
+        
+    else:
+        raise ValueError(f"Unsupported model type: {model_type}. Choose from 'xgboost', 'lightgbm', or 'sklearn'.")
+    
+    return model
+
+
+def save_model(model, filepath):
+    """
+    Save trained model to disk.
+    
+    Parameters:
+    -----------
+    model : object
+        Trained model to save
+    filepath : str
+        Path where to save the model
+        
+    Returns:
+    --------
+    str
+        Path where the model was saved
+    """
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    # Choose serialization method based on model type
+    if isinstance(model, (xgb.XGBModel, lgb.LGBMModel)):
+        # For XGBoost and LightGBM models
+        model.save_model(filepath)
+    else:
+        # For scikit-learn models
+        joblib.dump(model, filepath)
+    
+    print(f"Model saved to {filepath}")
+    
+    return filepath
+
+
+def load_model(filepath):
+    """
+    Load model from disk.
+    
+    Parameters:
+    -----------
+    filepath : str
+        Path where the model is saved
+        
+    Returns:
+    --------
+    object
+        Loaded model
+    
+    Raises:
+    -------
+    FileNotFoundError
+        If the model file doesn't exist
+    """
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f"Model file not found: {filepath}")
+    
+    # Determine model type based on file extension
+    if filepath.endswith('.joblib'):
+        model = joblib.load(filepath)
+    elif filepath.endswith('.pkl'):
+        with open(filepath, 'rb') as file:
+            model = pickle.load(file)
+    elif filepath.endswith('.json') or filepath.endswith('.txt'):
+        # Likely a LightGBM or XGBoost model
+        # Try to determine model type
+        if 'xgb' in filepath:
+            model = xgb.XGBClassifier()
+            model.load_model(filepath)
+        elif 'lgb' in filepath:
+            model = lgb.LGBMClassifier()
+            model.load_model(filepath)
+        else:
+            raise ValueError(f"Cannot determine model type for file: {filepath}")
+    else:
+        # Default to joblib
+        model = joblib.load(filepath)
+    
+    print(f"Model loaded from {filepath}")
+    
+    return model
+
+
+def evaluate_model(model, X, y, threshold=0.5):
+    """
+    Evaluate model using multiple metrics.
+    
+    Parameters:
+    -----------
+    model : object
+        Trained model
+    X : pandas.DataFrame or numpy.ndarray
+        Features
+    y : pandas.Series or numpy.ndarray
+        True target values
+    threshold : float, default=0.5
+        Threshold for binary classification
+        
+    Returns:
+    --------
+    dict
+        Dictionary with evaluation metrics
+    """
+    # Get predicted probabilities
+    if hasattr(model, 'predict_proba'):
+        y_probs = model.predict_proba(X)[:, 1]
+    else:
+        # For models like XGBoost that use predict with output_margin
+        y_probs = model.predict(X)
+    
+    # Get binary predictions using threshold
+    y_pred = (y_probs >= threshold).astype(int)
+    
+    # Calculate metrics
+    metrics = {
+        'accuracy': accuracy_score(y, y_pred),
+        'precision': precision_score(y, y_pred),
+        'recall': recall_score(y, y_pred),
+        'f1_score': f1_score(y, y_pred),
+        'roc_auc': roc_auc_score(y, y_probs),
+        'threshold': threshold
+    }
+    
+    return metrics
+
+
+def cross_validate_model(model, X, y, cv=5, scoring='roc_auc', random_state=42):
+    """
+    Perform cross-validation on a model.
+    
+    Parameters:
+    -----------
+    model : object
+        Model to cross-validate
+    X : pandas.DataFrame or numpy.ndarray
+        Features
+    y : pandas.Series or numpy.ndarray
+        Target variable
+    cv : int, default=5
+        Number of cross-validation folds
+    scoring : str, default='roc_auc'
+        Scoring metric for cross-validation
+    random_state : int, default=42
+        Random seed for reproducibility
+        
+    Returns:
+    --------
+    dict
+        Dictionary with cross-validation results
+    """
+    # Use stratified k-fold for classification
+    cv_strategy = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
+    
+    # Perform cross-validation
+    cv_scores = cross_val_score(model, X, y, cv=cv_strategy, scoring=scoring, n_jobs=-1)
+    
+    # Calculate result statistics
+    cv_results = {
+        'mean_score': np.mean(cv_scores),
+        'std_score': np.std(cv_scores),
+        'min_score': np.min(cv_scores),
+        'max_score': np.max(cv_scores),
+        'all_scores': cv_scores,
+        'scoring': scoring,
+        'cv_folds': cv
+    }
+    
+    return cv_results
+
+
+def train_and_evaluate(X_train, y_train, X_val, y_val, model_type='random_forest', model_params=None, threshold=0.5):
+    """
+    Train a model and evaluate on validation set.
+    
+    Parameters:
+    -----------
+    X_train : pandas.DataFrame
+        Training features
+    y_train : pandas.Series
+        Training target
+    X_val : pandas.DataFrame
+        Validation features
+    y_val : pandas.Series
+        Validation target
+    model_type : str, default='random_forest'
+        Type of model to train: 'logistic', 'decision_tree', 'random_forest', 'xgboost', 'lightgbm'
+    model_params : dict, default=None
+        Parameters for the model
+    threshold : float, default=0.5
+        Threshold for binary classification
+        
+    Returns:
+    --------
+    tuple
+        (trained model, training metrics, validation metrics)
+    """
+    if model_params is None:
+        model_params = {}
+    
+    # Train the appropriate model
+    if model_type == 'logistic':
+        model = train_logistic_regression(X_train, y_train, **model_params)
+    elif model_type == 'decision_tree':
+        model = train_decision_tree(X_train, y_train, **model_params)
+    elif model_type == 'random_forest':
+        model = train_random_forest(X_train, y_train, **model_params)
+    elif model_type == 'xgboost':
+        model = train_gradient_boosting(X_train, y_train, model_type='xgboost', **model_params)
+    elif model_type == 'lightgbm':
+        model = train_gradient_boosting(X_train, y_train, model_type='lightgbm', **model_params)
+    else:
+        raise ValueError(f"Unsupported model type: {model_type}")
+    
+    # Evaluate on training set
+    train_metrics = evaluate_model(model, X_train, y_train, threshold=threshold)
+    
+    # Evaluate on validation set
+    val_metrics = evaluate_model(model, X_val, y_val, threshold=threshold)
+    
+    return model, train_metrics, val_metrics
+
+
+def create_model_metadata(model, train_metrics, val_metrics, model_params, feature_names=None):
+    """
+    Create metadata for a trained model.
+    
+    Parameters:
+    -----------
+    model : object
+        Trained model
+    train_metrics : dict
+        Metrics on training set
+    val_metrics : dict
+        Metrics on validation set
+    model_params : dict
+        Parameters used to train the model
+    feature_names : list, default=None
+        List of feature names used in training
+        
+    Returns:
+    --------
+    dict
+        Model metadata
+    """
+    metadata = {
+        'model_type': type(model).__name__,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'training_metrics': train_metrics,
+        'validation_metrics': val_metrics,
+        'model_parameters': model_params,
+        'feature_count': len(feature_names) if feature_names is not None else None,
+        'feature_names': feature_names
+    }
+    
+    # Add feature importance if available
+    if hasattr(model, 'feature_importances_') and feature_names is not None:
+        feature_importance = pd.DataFrame({
+            'feature': feature_names,
+            'importance': model.feature_importances_
+        }).sort_values('importance', ascending=False)
+        
+        metadata['feature_importance'] = feature_importance.to_dict('records')
+    
+    return metadata
+
+
+def save_model_with_metadata(model, metadata, base_filepath):
+    """
+    Save model and its metadata.
+    
+    Parameters:
+    -----------
+    model : object
+        Trained model
+    metadata : dict
+        Model metadata
+    base_filepath : str
+        Base path for saving model and metadata
+        
+    Returns:
+    --------
+    dict
+        Paths where model and metadata were saved
+    """
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(base_filepath), exist_ok=True)
+    
+    # Save model
+    model_filepath = f"{base_filepath}.joblib"
+    save_model(model, model_filepath)
+    
+    # Save metadata
+    metadata_filepath = f"{base_filepath}_metadata.json"
+    with open(metadata_filepath, 'w') as f:
+        import json
+        json.dump(metadata, f, indent=4)
+    
+    return {
+        'model_path': model_filepath,
+        'metadata_path': metadata_filepath
+    }
